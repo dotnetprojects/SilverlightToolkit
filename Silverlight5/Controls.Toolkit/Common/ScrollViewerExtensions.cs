@@ -601,7 +601,7 @@ namespace System.Windows.Controls
                 SetHorizontalOffset(viewer, viewer.HorizontalOffset);
 
                 DoubleAnimation verticalOffsetAnimation = new DoubleAnimation { To = verticalOffset, Duration = duration };
-                DoubleAnimation horizontalOffsetAnimation = new DoubleAnimation { To = verticalOffset, Duration = duration };
+                DoubleAnimation horizontalOffsetAnimation = new DoubleAnimation { To = horizontalOffset, Duration = duration };
 
                 Storyboard.SetTarget(verticalOffsetAnimation, viewer);
                 Storyboard.SetTarget(horizontalOffsetAnimation, viewer);

@@ -1458,7 +1458,7 @@ namespace System.Windows.Controls
                             {
                                 Point offset = gt.Transform(new Point(insertBefore ? 0 : itemContainer.GetSize().Width, 0));
 
-                                if (offset.X <= _insertionIndicatorContainer.GetSize().Height)
+                                if (offset.X <= _insertionIndicatorContainer.GetSize().Width)
                                 {
                                     return
                                         new LineGeometry
