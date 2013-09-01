@@ -56,7 +56,8 @@ namespace System.Windows.Controls
             Type genericListType = collection.GetType().GetInterfaces().Where(interfaceType => interfaceType.FullName.StartsWith("System.Collections.Generic.IList`1", StringComparison.Ordinal)).FirstOrDefault();
             if (genericListType != null)
             {
-                return genericListType.GetGenericArguments()[0] == item.GetType();
+                //return genericListType.GetGenericArguments()[0] == item.GetType();
+                return genericListType.GetGenericArguments()[0].IsAssignableFrom(item.GetType());
             }
 
             if (collection is IList)
@@ -111,7 +112,7 @@ namespace System.Windows.Controls
                 Type genericListType = collection.GetType().GetInterfaces().Where(interfaceType => interfaceType.FullName.StartsWith("System.Collections.Generic.ICollection`1", StringComparison.Ordinal)).FirstOrDefault();
                 if (genericListType != null)
                 {
-                    return (int) genericListType.GetProperty("Count").GetValue(collection, new object[] { });
+                    return (int)genericListType.GetProperty("Count").GetValue(collection, new object[] { });
                 }
 
                 IList list = collection as IList;
@@ -119,7 +120,7 @@ namespace System.Windows.Controls
                 {
                     return list.Count;
                 }
-                
+
                 return System.Linq.Enumerable.Count(collection.OfType<object>());
             }
         }
@@ -139,7 +140,7 @@ namespace System.Windows.Controls
             else
             {
                 PropertyInfo countProperty = collection.GetType().GetProperty("Count");
-                int count = (int) countProperty.GetValue(collection, new object[] { });
+                int count = (int)countProperty.GetValue(collection, new object[] { });
                 Insert(collection, count, item);
             }
         }
