@@ -53,6 +53,11 @@ namespace System.Windows.Controls
         private bool _settingIsOpen;
 
         /// <summary>
+        /// Weak Event Listener for root Visual
+        /// </summary>
+        private WeakEventListener<ContextMenu, object, MouseEventArgs> _rootVisualMouseMoveListener;
+
+        /// <summary>
         /// Gets or sets the owning object for the ContextMenu.
         /// </summary>
         internal DependencyObject Owner
@@ -305,19 +310,31 @@ namespace System.Windows.Controls
             e.Handled = true;
         }
 
+        
         /// <summary>
         /// Initialize the _rootVisual property (if possible and not already done).
         /// </summary>
         private void InitializeRootVisual()
-        {
+        {           
             if (null == _rootVisual)
             {
                 // Try to capture the Application's RootVisual
                 _rootVisual = Application.Current.RootVisual as FrameworkElement;
+
                 if (null != _rootVisual)
                 {
-                    // Ideally, this would use AddHandler(MouseMoveEvent), but MouseMoveEvent doesn't exist
-                    _rootVisual.MouseMove += new MouseEventHandler(HandleRootVisualMouseMove);
+                    var rootVisual = _rootVisual;
+
+                    // Use a weak event listener.
+                    if (_rootVisualMouseMoveListener != null)
+                        _rootVisualMouseMoveListener.Detach();
+
+                    _rootVisualMouseMoveListener = new WeakEventListener<ContextMenu, object, MouseEventArgs>(this);
+
+                    _rootVisualMouseMoveListener.OnEventAction = (instance, source, eventArgs) => instance.HandleRootVisualMouseMove(source, eventArgs);
+
+                    _rootVisualMouseMoveListener.OnDetachAction = (weakEventListener) => rootVisual.MouseMove -= weakEventListener.OnEvent;
+                    rootVisual.MouseMove += _rootVisualMouseMoveListener.OnEvent;
                 }
             }
         }
