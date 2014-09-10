@@ -788,10 +788,6 @@ namespace System.Windows.Controls
         [SuppressMessage("Microsoft.Maintainability", "CA1506:AvoidExcessiveClassCoupling", Justification = "Use of Rx makes code appear more complex than it is to static analyzer.")]
         protected DragDropTarget()
         {
-            // Defer attaching to KeyStatesChanged event until load so that
-            // RootVisual is instantiated.
-            this.Loaded += delegate { GetKeyStatesChanged().Subscribe(keyStates => this._keyStates = keyStates); };
-
             SW.DragEventHandler raiseIndicatingInsertionLocationEvent =
                 (_, args) =>
                 {
@@ -843,18 +839,80 @@ namespace System.Windows.Controls
 
             _itemDragStarted.Subscribe(ev => OnItemDragStarted(ev.EventArgs));
 
-            IObservable<IEvent<MouseEventArgs>> draggingObservable =
-                from dragStarted in _itemDragStarted
-                from mouseMove in
-                    Application.Current.RootVisual
-                        .GetMouseMoveOnSelfAndSiblings()
-                        .TakeUntil(_itemDragCompleted)
-                select mouseMove;
+            // Defer attaching to KeyStatesChanged event until load so that
+            // RootVisual is instantiated.
 
-            draggingObservable.Subscribe(ev => OnDragging(ev.EventArgs));
-
-            _itemDragCompleted.Subscribe(ev => InternalOnItemDragCompleted(ev.EventArgs));
+            // BID2WIN Inc.
+            // Not only should we defer key state changed events, we defer EVERYTHING related to the root visual.
+            // We also keep track of what we attached using a closure / disposable events, so we can clean up when the
+            // target is unloaded.
+            this.Loaded += DragDropTarget_Loaded;
+            this.Unloaded += DragDropTarget_Unloaded;
         }
+
+        #region BID2WIN Inc. Memory Leak Bug Fix
+
+        private IDisposable keyStateEventHandlers = null;
+        private IDisposable draggingEventHandlers = null;
+        private IDisposable itemDraggingEventHandlers = null;
+
+        /// <summary>
+        /// Disposes the event handlers.
+        /// </summary>
+        private void DisposeEventHandlers()
+        {
+            if (draggingEventHandlers != null)
+            {
+                draggingEventHandlers.Dispose();
+                draggingEventHandlers = null;
+            }
+            if (keyStateEventHandlers != null)
+            {
+                keyStateEventHandlers.Dispose();
+                keyStateEventHandlers = null;
+            }
+            if (itemDraggingEventHandlers != null)
+            {
+                itemDraggingEventHandlers.Dispose();
+                itemDraggingEventHandlers = null;
+            }
+        }
+
+        /// <summary>
+        /// Handles the Loaded event of the DragDropTarget control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="System.Windows.RoutedEventArgs"/> instance containing the event data.</param>
+        private void DragDropTarget_Loaded(object sender, RoutedEventArgs e)
+        {
+            // Ensure we start with a clean slate. 
+            DisposeEventHandlers();
+
+            IObservable<IEvent<MouseEventArgs>> draggingObservable =
+                    from dragStarted in _itemDragStarted
+                    from mouseMove in
+                        Application.Current.RootVisual
+                            .GetMouseMoveOnSelfAndSiblings()
+                            .TakeUntil(_itemDragCompleted)
+                    select mouseMove;
+
+            this.keyStateEventHandlers = GetKeyStatesChanged().Subscribe(keyStates => this._keyStates = keyStates);
+            this.draggingEventHandlers = draggingObservable.Subscribe(ev => OnDragging(ev.EventArgs));
+            this.itemDraggingEventHandlers = _itemDragCompleted.Subscribe(ev => InternalOnItemDragCompleted(ev.EventArgs));
+        }
+
+        /// <summary>
+        /// Handles the Unloaded event of the DragDropTarget control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="System.Windows.RoutedEventArgs"/> instance containing the event data.</param>
+        private void DragDropTarget_Unloaded(object sender, RoutedEventArgs e)
+        {
+            // Dispose the event handlers to allow this control to be garbage collected.
+            DisposeEventHandlers();
+        }
+
+        #endregion
 
         /// <summary>
         /// Returns a value indicating whether an item is being dragged within
@@ -916,7 +974,7 @@ namespace System.Windows.Controls
                             .Return(Application.Current)
                             .ObserveOnDispatcher()
                             .SelectMany(app => app.RootVisual.GetKeyStateChangedAlways(_keyStates))
-                            .TakeUntil(_itemDragStarted)         
+                            .TakeUntil(_itemDragStarted)
                     select keyStates,
                 // after drag starts listen to root visual and all siblings
                     from _ in _itemDragStarted
@@ -1097,7 +1155,7 @@ namespace System.Windows.Controls
         private void InternalOnItemDragCompleted(ItemDragEventArgs args)
         {
             _currentItemDragEventArgs = null;
-            _dragPopup.IsOpen = false;
+            _dragPopup.IsOpen = false;            
             _dragDecorator.Content = null;
             _dragDecorator.Visibility = Visibility.Collapsed;
 
