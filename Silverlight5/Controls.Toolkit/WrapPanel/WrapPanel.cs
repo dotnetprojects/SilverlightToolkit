@@ -91,7 +91,7 @@ namespace System.Windows.Controls
         /// <see cref="P:System.Windows.Controls.WrapPanel.ItemWidth" />
         /// dependency property.
         /// </value>
-        public static readonly DependencyProperty ItemWidthProperty =
+       public static readonly DependencyProperty ItemWidthProperty =
             DependencyProperty.Register(
                 "ItemWidth",
                 typeof(double),
@@ -173,6 +173,74 @@ namespace System.Windows.Controls
             source.InvalidateMeasure();
         }
         #endregion public Orientation Orientation
+
+        #region public FlowDirection FlowDirection - Added By lepipele
+
+        /// <summary>
+        /// Gets or sets the direction that text and other user interface (UI) elements
+        /// flow within any parent element that controls their layout. This is a dependency
+        /// property.
+        /// </summary>
+        /// <remarks>
+        /// The default value is LeftToRight.
+        /// </remarks>
+        public FlowDirection FlowDirection
+        {
+            get { return (FlowDirection)GetValue(FlowDirectionProperty); }
+            set { SetValue(FlowDirectionProperty, value); }
+        }
+
+        /// <summary>
+        /// Identifies the FlowDirection dependency property.
+        /// </summary>
+        public static readonly DependencyProperty FlowDirectionProperty =
+            DependencyProperty.Register(
+                "FlowDirection",
+                typeof(FlowDirection),
+                typeof(WrapPanel),
+                new PropertyMetadata(FlowDirection.LeftToRight, OnFlowDirectionPropertyChanged));
+
+        /// <summary>
+        /// FlowDirectionProperty property changed handler.
+        /// </summary>
+        /// <param name="d">WrapPanel that changed its Orientation.</param>
+        /// <param name="e">Event arguments.</param>
+        [SuppressMessage("Microsoft.Usage", "CA2208:InstantiateArgumentExceptionsCorrectly", Justification = "Almost always set from the CLR property.")]
+        private static void OnFlowDirectionPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            WrapPanel source = (WrapPanel)d;
+            FlowDirection value = (FlowDirection)e.NewValue;
+
+            // Ignore the change if requested
+            if (source._ignorePropertyChange)
+            {
+                source._ignorePropertyChange = false;
+                return;
+            }
+
+            // Validate the Orientation
+            if ((value != FlowDirection.LeftToRight) &&
+                (value != FlowDirection.RightToLeft))
+            {
+                // Reset the property to its original state before throwing
+                source._ignorePropertyChange = true;
+                source.SetValue(OrientationProperty, (FlowDirection)e.OldValue);
+
+                string message = string.Format(
+                    CultureInfo.InvariantCulture,
+                    // TODO: Add to the resources
+                    // WrapPanel_OnFlowDirectionPropertyChanged_InvalidValue	Invalid FlowDirection value '{0}'.	Exception thrown when the FlowDirection property is provided an invalid value.
+                    "Invalid FlowDirection value '{0}'.",
+                    value);
+                throw new ArgumentException(message, "value");
+            }
+
+            // Orientation affects measuring.
+            source.InvalidateMeasure();
+        }
+        #endregion
+
+
 
         /// <summary>
         /// Initializes a new instance of the
@@ -362,7 +430,7 @@ namespace System.Windows.Controls
                 if (NumericExtensions.IsGreaterThan(lineSize.Direct + elementSize.Direct, maximumSize.Direct))
                 {
                     // Then we just completed a line and we should arrange it
-                    ArrangeLine(lineStart, lineEnd, directDelta, indirectOffset, lineSize.Indirect);
+                    ArrangeLine(lineStart, lineEnd, directDelta, indirectOffset, lineSize.Indirect, maximumSize.Direct);
 
                     // Move the current element to a new line
                     indirectOffset += lineSize.Indirect;
@@ -372,7 +440,7 @@ namespace System.Windows.Controls
                     if (NumericExtensions.IsGreaterThan(elementSize.Direct, maximumSize.Direct))
                     {
                         // Arrange the element as a single line
-                        ArrangeLine(lineEnd, ++lineEnd, directDelta, indirectOffset, elementSize.Indirect);
+                        ArrangeLine(lineEnd, ++lineEnd, directDelta, indirectOffset, elementSize.Indirect, maximumSize.Direct);
 
                         // Move to a new line
                         indirectOffset += lineSize.Indirect;
@@ -393,7 +461,7 @@ namespace System.Windows.Controls
             // Arrange any elements on the last line
             if (lineStart < count)
             {
-                ArrangeLine(lineStart, count, directDelta, indirectOffset, lineSize.Indirect);
+                ArrangeLine(lineStart, count, directDelta, indirectOffset, lineSize.Indirect, maximumSize.Direct);
             }
             
             return finalSize;
@@ -417,12 +485,24 @@ namespace System.Windows.Controls
         /// <param name="indirectGrowth">
         /// Shared indirect growth of the elements on this line.
         /// </param>
-        private void ArrangeLine(int lineStart, int lineEnd, double? directDelta, double indirectOffset, double indirectGrowth)
+        /// <param name="maxDirect">
+        /// MaxSize of WrapPanel to be used in right to left orentation scenarios
+        /// </param>
+        private void ArrangeLine(int lineStart, int lineEnd, double? directDelta, double indirectOffset, double indirectGrowth
+            // Added by lepipele
+            , double maxDirect)
         {
-            double directOffset = 0.0;
-
             Orientation o = Orientation;
             bool isHorizontal = o == Orientation.Horizontal;
+
+            FlowDirection f = FlowDirection;
+            bool isLeftToRight = f == FlowDirection.LeftToRight;
+
+            double directOffset = 0.0;
+            if (!isLeftToRight)
+            {
+                directOffset = maxDirect;
+            }
 
             UIElementCollection children = Children;
             for (int index = lineStart; index < lineEnd; index++)
@@ -430,7 +510,7 @@ namespace System.Windows.Controls
                 // Get the size of the element
                 UIElement element = children[index];
                 OrientedSize elementSize = new OrientedSize(o, element.DesiredSize.Width, element.DesiredSize.Height);
-                
+
                 // Determine if we should use the element's desired size or the
                 // fixed item width or height
                 double directGrowth = directDelta != null ?
@@ -438,12 +518,26 @@ namespace System.Windows.Controls
                     elementSize.Direct;
 
                 // Arrange the element
-                Rect bounds = isHorizontal ?
-                    new Rect(directOffset, indirectOffset, directGrowth, indirectGrowth) :
-                    new Rect(indirectOffset, directOffset, indirectGrowth, directGrowth);
-                element.Arrange(bounds);
+                Rect bounds = Rect.Empty;
 
-                directOffset += directGrowth;
+                if (isLeftToRight)
+                {
+                    bounds = isHorizontal ?
+                        new Rect(directOffset, indirectOffset, directGrowth, indirectGrowth) :
+                        new Rect(indirectOffset, directOffset, indirectGrowth, directGrowth);
+
+                    directOffset += directGrowth;
+                }
+                else
+                {
+                    bounds = isHorizontal ?
+                        new Rect(directOffset - directGrowth, indirectOffset, directGrowth, indirectGrowth) :
+                        new Rect(indirectOffset, directOffset - directGrowth, indirectGrowth, directGrowth);
+
+                    directOffset -= directGrowth;
+                }
+
+                element.Arrange(bounds);
             }
         }
     }
